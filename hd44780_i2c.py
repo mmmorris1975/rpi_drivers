@@ -88,7 +88,7 @@ class hd44780_i2c():
     # data so we can also specify the necessary control signals on the other 4 bits of the byte.
     #
     # This code will:
-    #   FUNCTION SET: 4-bit mode, 2 lines with 5x8 characters
+    #   FUNCTION SET: 4-bit mode, with 5x8 characters, num display lines auto-detected
     #   ENTRY MODE: L -> R with no display shift
     #   DISPLAY MODE: Turn display and cursor on, no cursor blink
     #
@@ -99,7 +99,11 @@ class hd44780_i2c():
     # necessary to make the text readable (it's visible, but very dim).
 
     # This can't be changed after initialization
-    func_set = LCD_CMD_FUNCTIONSET | LCD_4BITMODE | LCD_2LINE | LCD_5x8DOTS
+    lines = LCD_1LINE
+    if self.rows > 1:
+      lines = LCD_2LINE
+
+    func_set = LCD_CMD_FUNCTIONSET | LCD_4BITMODE | lines | LCD_5x8DOTS
 
     # These can
     self.entry_mode_set = LCD_CMD_ENTRYMODESET | LCD_ENTRYLEFT | LCD_ENTRYSHIFTDECR
@@ -194,6 +198,7 @@ class hd44780_i2c():
     # Call print(), with trailing new line. 
     # TODO: Be aware that the display attempts to print the newline instead of shifting
     # the cursor to the next line.  That's cool, we'll just have to account for that.
+    # Line 4 wraps to Line 1?
     self.printstr(str(val) + "\n")
 
   def write(self, val):
@@ -345,3 +350,5 @@ if __name__ == "__main__":
   cls.set_cursor(-1,-1)
   sleep(1)
   cls.set_cursor(cls.rows/2, cls.cols/2)
+  sleep(1)
+  cls.off()

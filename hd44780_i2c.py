@@ -30,6 +30,7 @@ LCD_LINE1_ADDR = 0x00
 LCD_LINE2_ADDR = 0x40
 LCD_LINE3_ADDR = 0x14 # 20 chars into line 1
 LCD_LINE4_ADDR = 0x54 # 20 chars into line 2
+LCD_LINE_ADDR_LIST = [ LCD_LINE1_ADDR, LCD_LINE2_ADDR, LCD_LINE3_ADDR, LCD_LINE4_ADDR ]
 
 # Taken from LiquidCrystal_I2C library and Wikipedia page:
 # https://en.wikipedia.org/wiki/Hitachi_HD44780_LCD_controller
@@ -143,15 +144,15 @@ class hd44780_i2c():
 
     if not self.test:
       # initialize I2C library and display, there is no special
-      # RPi setup needed other than enabling I2C in the kernel
+      # RPi setup needed, other than enabling I2C in the kernel.
       self.bus = smbus.SMBus(i2c_bus)
       self._init_display()
 
   def set_delay(self, **kwargs):
     # Override the default library delays. kwargs can be one of 'cmd', or 'char'
     # to specify setting the delay for LCD commands, or sending characters.
-    self.cmd_delay  = kwargs.get('cmd', DEFAULT_CMD_DELAY)
-    self.char_delay = kwargs.get('char', DEFAULT_CHAR_DELAY)
+    self.cmd_delay  = kwargs.get('cmd', DEFAULT_CMD_DELAY) / 1000000.0
+    self.char_delay = kwargs.get('char', DEFAULT_CHAR_DELAY) / 1000000.0
 
   def _write_byte(self, val, mode):
     #print("SENDING: " + bin(val)[2:].zfill(8) + ", MODE: " + str(mode))
@@ -190,20 +191,21 @@ class hd44780_i2c():
       self.write(ord(c))
 
   def println(self, val):
-    # Call print(), with trailing new line. Be aware that the display attempts to print the newline instead
-    # of shifting the cursor to the next line.  That's cool, we'll just have to account for that.
+    # Call print(), with trailing new line. 
+    # TODO: Be aware that the display attempts to print the newline instead of shifting
+    # the cursor to the next line.  That's cool, we'll just have to account for that.
     self.printstr(str(val) + "\n")
 
   def write(self, val):
     # raw write data to the display
     if not self.test:
       self._write_byte(val, LCD_REG_DATA)
-      sleep(self.char_delay / 1000000)
+      sleep(self.char_delay)
 
   def command(self, val):
     # Send command to display, for display-specific commands not covered in the API
     self._write_byte(val, LCD_REG_CMD)
-    sleep(self.cmd_delay / 1000000) # Pause to ensure command is executed
+    sleep(self.cmd_delay) # Pause to ensure command is executed
     return bin(val)[2:].zfill(8)
 
   def clear(self):
@@ -215,26 +217,24 @@ class hd44780_i2c():
     return self.command(LCD_CMD_CURSORHOME)
 
   def set_cursor(self, row, col):
-    # move cursor to indicated position, row and col values falling outside the configured
-    # display size will be set to 0 or the rows/colums value provided in the constructor
+    # move cursor to indicated position (absolute, zero based), row and col values falling outside the
+    # configured display size will be set to 0 or max rows/colums value provided in the constructor
     if row < 0:
       row = 0
 
     if col < 0:
       col = 0
 
-    if row > self.rows:
-      row = self.rows
+    if row >= self.rows:
+      row = self.rows - 1
 
-    if col > self.cols:
-      col = self.cols
+    if col >= self.cols:
+      col = self.cols - 1
 
     if row == 0 and col == 0:
       self.home()
     else:
-      # TODO: move cursor to the indicated position.  Should we send cursor home command and then
-      # move, or determine current cursor position and move relative to that?
-      pass
+      self.command(LCD_CMD_SETDDRAMADDR | (col + LCD_LINE_ADDR_LIST[row]))
 
   def cursor_on(self):
     # set block cursor on
@@ -302,34 +302,46 @@ class hd44780_i2c():
 
 if __name__ == "__main__":
   # For personal reference, my display is running ROM code A00
-  cls = hd44780_i2c(1, 0x3f, 20, 4)
-  sleep(1)
+  cls = hd44780_i2c(1, 0x3f, 4, 20)
+
   # lines longer than 20 chars will wrap in this order 1 -> 3 -> 2 -> 4
   # lines longer than 80 chars will circularly wrap 80 -> 1
   cls.printstr('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz9876543210')
-  sleep(3)
+  sleep(2)
   print("CURSOR OFF")
   cls.cursor_off()
-  sleep(3)
+  sleep(1)
   print("CURSOR ON")
   cls.cursor_on()
-  sleep(3)
+  sleep(1)
   print("BLINK ON")
   cls.blink_on()
-  sleep(3)
+  sleep(1)
   print("BLINK OFF")
   cls.blink_off()
-  sleep(3)
+  sleep(1)
   print("HOME")
   cls.home()
-  sleep(3)
+  sleep(1)
   print("CLEAR")
   cls.clear()
-  sleep(3)
+  sleep(1)
   print("OFF")
   cls.off()
-  sleep(3)
+  sleep(1)
   print("ON")
   cls.on()
   sleep(1)
   cls.printstr('Hello World')
+
+  for r in range(cls.rows, -1, -1):
+    cls.set_cursor(r, 0)
+    sleep(1)
+
+  cls.set_cursor(cls.rows, cls.cols)
+  sleep(1)
+  cls.set_cursor(1,1)
+  sleep(1)
+  cls.set_cursor(-1,-1)
+  sleep(1)
+  cls.set_cursor(cls.rows/2, cls.cols/2)

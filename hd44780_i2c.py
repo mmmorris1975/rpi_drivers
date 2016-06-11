@@ -17,7 +17,7 @@ import smbus
 
 # Time is in microseconds
 # Wikipedia says max command execution time is 1.52ms
-DEFAULT_CMD_DELAY  = 1550
+DEFAULT_CMD_DELAY  = 2000
 DEFAULT_CHAR_DELAY = 50
 
 # Control status of the Register Select (RS) line
@@ -96,14 +96,21 @@ class hd44780_i2c():
 
     func_set = LCD_CMD_FUNCTIONSET | LCD_4BITMODE | LCD_2LINE | LCD_5x8DOTS
     entry_mode_set = LCD_CMD_ENTRYMODESET | LCD_ENTRYLEFT | LCD_ENTRYSHIFTDECR
-    display_control_set = LCD_CMD_DISPLAYCONTROL | LCD_DISPLAYON | LCD_CURSOROFF | LCD_BLINKOFF
+    display_control_set = LCD_CMD_DISPLAYCONTROL | LCD_DISPLAYON | LCD_CURSORON | LCD_BLINKOFF
 
     # Wait at least 40ms after Vcc hits 2.7V
     sleep(0.1)
-    self.command(0x30)
-    sleep(0.01) # Default command delay too short
-    self.command(0x30) # Per datasheet, default delay should be adequate here
-    self.command(0x30)
+
+    # Need to raw _i2c_write(val) to set 4-bit mode before sending commands
+    self._i2c_write(0x0)
+    sleep(0.01)
+    self._i2c_write(0x30)
+    sleep(0.01)
+    self._i2c_write(0x30)
+    sleep(0.01)
+    self._i2c_write(0x30)
+    sleep(0.01)
+    self._i2c_write(0x20)
     sleep(0.1) # for good measure
 
     # Reset instructions complete, now initialize
@@ -112,6 +119,7 @@ class hd44780_i2c():
     self.command(display_control_set)
     self.set_backlight(LCD_BACKLIGHT)
     self.clear()
+    self.home()
 
   # Mandatory functions
   def __init__(self, i2c_bus, i2c_addr, rows, cols, **kwargs):
@@ -142,13 +150,14 @@ class hd44780_i2c():
 
   def _write_byte(self, val, mode):
     print("SENDING: " + bin(val)[2:].zfill(8) + ", MODE: " + str(mode))
-    high_nib = (val >> 4) << 4
-    low_nib  = (val & 0x0F) << 4
-    print("  HIGH NIB: " + bin(high_nib | mode)[2:].zfill(8))
-    self._i2c_write(high_nib | mode)
-    print("  LOW NIB:  " + bin(low_nib | mode)[2:].zfill(8))
-    self._i2c_write(low_nib | mode)
-    self._pulse(self.backlight)
+    high_nib = val >> 4
+    low_nib  = val & 0x0F
+
+    print("  HIGH NIB: " + bin(high_nib)[2:].zfill(4))
+    self._i2c_write((high_nib << 4) | mode)
+
+    print("  LOW NIB:  " + bin(low_nib)[2:].zfill(4))
+    self._i2c_write((low_nib << 4) | mode)
 
   def _i2c_write(self, val):
     data = val | self.backlight
@@ -168,7 +177,6 @@ class hd44780_i2c():
     for c in val[:]:
       print("WRITTING: " + c)
       self.write(ord(c))
-      sleep(5)
 
   def println(self, val):
     # Call print(), with trailing new line
@@ -276,9 +284,5 @@ class hd44780_i2c():
 if __name__ == "__main__":
   # cls = hd44780_i2c(1, 0x3f, 20, 4, test = True)
   cls = hd44780_i2c(1, 0x3f, 20, 4)
-  print("SLEEPING")
-  sleep(3)
-  cls.printstr('wad951')
-#  print(cls.off())
-#  print(cls.clear())
-#  print(cls.blink_on())
+  cls.write(ord('H'))
+#  cls.printstr('wad951')

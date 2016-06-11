@@ -17,7 +17,7 @@ import smbus
 
 # Time is in microseconds
 # Wikipedia says max command execution time is 1.52ms
-DEFAULT_CMD_DELAY  = 2000
+DEFAULT_CMD_DELAY  = 1550
 DEFAULT_CHAR_DELAY = 50
 
 # Control status of the Register Select (RS) line
@@ -92,11 +92,16 @@ class hd44780_i2c():
     #
     # Execute the 'Initialize by Instruction' routine specified in the datasheet, since we won't assume
     # the system is supplying the necessary Vcc to trigger the power-on reset logic.  It'll also ensure
-    # we're starting from a totally clean slate when we instantiate new instances of this class
+    # we're starting from a totally clean slate when we instantiate new instances of this class.  With
+    # the display I use, connected to a 3.3V Vcc, I am unable to get the contrast (set via a trim pot)
+    # necessary to make the text readable (it's visible, but very dim).
 
+    # This can't be changed after initialization
     func_set = LCD_CMD_FUNCTIONSET | LCD_4BITMODE | LCD_2LINE | LCD_5x8DOTS
-    entry_mode_set = LCD_CMD_ENTRYMODESET | LCD_ENTRYLEFT | LCD_ENTRYSHIFTDECR
-    display_control_set = LCD_CMD_DISPLAYCONTROL | LCD_DISPLAYON | LCD_CURSORON | LCD_BLINKOFF
+
+    # These can
+    self.entry_mode_set = LCD_CMD_ENTRYMODESET | LCD_ENTRYLEFT | LCD_ENTRYSHIFTDECR
+    self.display_control_set = LCD_CMD_DISPLAYCONTROL | LCD_DISPLAYON | LCD_CURSORON | LCD_BLINKOFF
 
     # Wait at least 40ms after Vcc hits 2.7V
     sleep(0.1)
@@ -115,11 +120,10 @@ class hd44780_i2c():
 
     # Reset instructions complete, now initialize
     self.command(func_set)
-    self.command(entry_mode_set)
-    self.command(display_control_set)
+    self.command(self.entry_mode_set)
+    self.command(self.display_control_set)
     self.set_backlight(LCD_BACKLIGHT)
     self.clear()
-    self.home()
 
   # Mandatory functions
   def __init__(self, i2c_bus, i2c_addr, rows, cols, **kwargs):
@@ -149,45 +153,44 @@ class hd44780_i2c():
     self.char_delay = kwargs.get('char', DEFAULT_CHAR_DELAY)
 
   def _write_byte(self, val, mode):
-    print("SENDING: " + bin(val)[2:].zfill(8) + ", MODE: " + str(mode))
+    #print("SENDING: " + bin(val)[2:].zfill(8) + ", MODE: " + str(mode))
     high_nib = val >> 4
     low_nib  = val & 0x0F
 
-    print("  HIGH NIB: " + bin(high_nib)[2:].zfill(4))
-    print("  LOW NIB:  " + bin(low_nib)[2:].zfill(4))
+    #print("  HIGH NIB: " + bin(high_nib)[2:].zfill(4))
+    #print("  LOW NIB:  " + bin(low_nib)[2:].zfill(4))
 
     self._i2c_write((high_nib << 4) | mode)
     self._i2c_write((low_nib << 4) | mode)
 
   def _i2c_write(self, val):
     data = val | self.backlight
-    print("    SENDING BYTE: " + bin(data)[2:].zfill(8) + " (" + hex(data) + ")")
+    #print("    SENDING BYTE: " + bin(data)[2:].zfill(8) + " (" + hex(data) + ")")
     self.bus.write_byte(self.i2c_addr, data)
-    self._pulse(data)
+    self._pulse()
 
-  def _pulse(self, val):
-    #enable_on  = val | 0x04
-    #enable_off = val & ~0x04
-    enable_on  = self.bus.read_byte(self.i2c_addr) | 0x04
-    enable_off = self.bus.read_byte(self.i2c_addr) & ~0x04
+  def _pulse(self):
+    # We are curiously losing the backlight bit when doing the read back
+    enable_on  = self.bus.read_byte(self.i2c_addr) | 0x04 | self.backlight
+    enable_off = self.bus.read_byte(self.i2c_addr) & ~0x04 | self.backlight
 
-    print("      STROBING: " + bin(enable_on)[2:].zfill(8) + " (" + hex(enable_on) + ")")
-    print("      STROBING: " + bin(enable_off)[2:].zfill(8) + " (" + hex(enable_off) + ")")
+    #print("      STROBING: " + bin(enable_on)[2:].zfill(8) + " (" + hex(enable_on) + ")")
+    #print("      STROBING: " + bin(enable_off)[2:].zfill(8) + " (" + hex(enable_off) + ")")
 
-    self.bus.write_byte(self.i2c_addr, enable_on | self.backlight)
+    self.bus.write_byte(self.i2c_addr, enable_on)
     sleep(1/1000000)
-    self.bus.write_byte(self.i2c_addr, val & enable_off | self.backlight)
-    sleep(50/1000000)
+    self.bus.write_byte(self.i2c_addr, enable_off)
 
   # To avoid clashing with Python's print(), we'll break API compliance
   def printstr(self, val):
     # print the provided value on the display
     for c in val[:]:
-      print("WRITTING: " + c)
+      #print("WRITTING: " + c)
       self.write(ord(c))
 
   def println(self, val):
-    # Call print(), with trailing new line
+    # Call print(), with trailing new line. Be aware that the display attempts to print the newline instead
+    # of shifting the cursor to the next line.  That's cool, we'll just have to account for that.
     self.printstr(str(val) + "\n")
 
   def write(self, val):
@@ -234,19 +237,23 @@ class hd44780_i2c():
 
   def cursor_on(self):
     # set block cursor on
-    return self.command(LCD_CMD_DISPLAYCONTROL | LCD_CURSORON)
+    self.display_control_set |= LCD_CURSORON
+    return self.command(self.display_control_set)
 
   def cursor_off(self):
     # set block cursor off
-    return self.command(LCD_CMD_DISPLAYCONTROL | LCD_CURSOROFF)
+    self.display_control_set &= ~LCD_CURSORON
+    return self.command(self.display_control_set)
 
   def blink_on(self):
     # set blinking underline cursor on
-    return self.command(LCD_CMD_DISPLAYCONTROL | LCD_BLINKON)
+    self.display_control_set |= LCD_BLINKON
+    return self.command(self.display_control_set)
 
   def blink_off(self):
     # set blinking underline cursor off
-    return self.command(LCD_CMD_DISPLAYCONTROL | LCD_BLINKOFF)
+    self.display_control_set &= ~LCD_BLINKON
+    return self.command(self.display_control_set)
 
   # Optional functions
   def set_backlight(self, val):
@@ -266,13 +273,15 @@ class hd44780_i2c():
 
   def on(self):
     # turn display on and set backlight to ~ 75%
-    self.command(LCD_CMD_DISPLAYCONTROL | LCD_DISPLAYON)
+    self.display_control_set |= LCD_DISPLAYON
+    self.command(self.display_control_set)
     return self.set_backlight(192)
 
   def off(self):
     # set backlight to 0 and turn display off
     self.set_backlight(0)
-    return self.command(LCD_CMD_DISPLAYCONTROL | LCD_DISPLAYOFF)
+    self.display_control_set &= ~LCD_DISPLAYON
+    return self.command(self.display_control_set)
 
   def status(self):
     # TODO: return status of the display. API docs say:
@@ -290,7 +299,35 @@ class hd44780_i2c():
   #  draw_vertical_graph(row, col, len, end)
 
 if __name__ == "__main__":
-  # cls = hd44780_i2c(1, 0x3f, 20, 4, test = True)
+  # For personal reference, my display is running ROM code A00
   cls = hd44780_i2c(1, 0x3f, 20, 4)
-  cls.write(ord('H'))
-  cls.printstr('wad951')
+  sleep(1)
+  # lines longer than 20 chars will wrap in this order 1 -> 3 -> 2 -> 4
+  # lines longer than 80 chars will circularly wrap 80 -> 1
+  cls.printstr('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz9876543210')
+  sleep(3)
+  print("CURSOR OFF")
+  cls.cursor_off()
+  sleep(3)
+  print("CURSOR ON")
+  cls.cursor_on()
+  sleep(3)
+  print("BLINK ON")
+  cls.blink_on()
+  sleep(3)
+  print("BLINK OFF")
+  cls.blink_off()
+  sleep(3)
+  print("HOME")
+  cls.home()
+  sleep(3)
+  print("CLEAR")
+  cls.clear()
+  sleep(3)
+  print("OFF")
+  cls.off()
+  sleep(3)
+  print("ON")
+  cls.on()
+  sleep(1)
+  cls.printstr('Hello World')

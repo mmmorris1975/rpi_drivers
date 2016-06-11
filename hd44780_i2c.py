@@ -7,16 +7,17 @@
 # http://playground.arduino.cc/Code/LCDAPI
 # https://hmario.home.xs4all.nl/arduino/LiquidCrystal_I2C/
 
+# control lines
 # 0x08 - backlight on
 # 0x04 - E line high
 # 0x02 - R/W line high
 # 0x01 - RS line high
+# upper 4 bits of the byte are for char/cmd data
 
 from time import sleep
 import smbus
 
-# Time is in microseconds
-# Wikipedia says max command execution time is 1.52ms
+# Time is in microseconds (per docs, max command exec time is 1.52ms)
 DEFAULT_CMD_DELAY  = 1550
 DEFAULT_CHAR_DELAY = 50
 
@@ -83,7 +84,7 @@ class hd44780_i2c():
     # Initialize the display to a known default state. Must send at least a function set command,
     # and optionally send entry mode, display control and clear display commands. Since 3 of the 8
     # I2C outputs are used for control (RS, R/W and E lines), we need to use 4-bit mode for sending
-    # data so we can also specify the necessary control signals on the upper 4 bits of the byte.
+    # data so we can also specify the necessary control signals on the other 4 bits of the byte.
     #
     # This code will:
     #   FUNCTION SET: 4-bit mode, 2 lines with 5x8 characters
@@ -181,7 +182,7 @@ class hd44780_i2c():
     sleep(1/1000000)
     self.bus.write_byte(self.i2c_addr, enable_off)
 
-  # To avoid clashing with Python's print(), we'll break API compliance
+  # To avoid clashing with Python's print(), we'll need to break API compliance
   def printstr(self, val):
     # print the provided value on the display
     for c in val[:]:
@@ -194,7 +195,7 @@ class hd44780_i2c():
     self.printstr(str(val) + "\n")
 
   def write(self, val):
-    # raw write value to the display, callers are reponsible for implementing any delay after calling this method
+    # raw write data to the display
     if not self.test:
       self._write_byte(val, LCD_REG_DATA)
       sleep(self.char_delay / 1000000)
@@ -269,6 +270,7 @@ class hd44780_i2c():
 
   def set_contrast(self, val):
     # TODO: set display contrast (0-255)
+    # display I use doesn't support this, so provide a no-op for now
     pass
 
   def on(self):

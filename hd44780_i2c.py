@@ -154,21 +154,29 @@ class hd44780_i2c():
     low_nib  = val & 0x0F
 
     print("  HIGH NIB: " + bin(high_nib)[2:].zfill(4))
-    self._i2c_write((high_nib << 4) | mode)
-
     print("  LOW NIB:  " + bin(low_nib)[2:].zfill(4))
+
+    self._i2c_write((high_nib << 4) | mode)
     self._i2c_write((low_nib << 4) | mode)
 
   def _i2c_write(self, val):
     data = val | self.backlight
-    print("    SENDING BYTE: " + bin(data)[2:].zfill(8))
+    print("    SENDING BYTE: " + bin(data)[2:].zfill(8) + " (" + hex(data) + ")")
     self.bus.write_byte(self.i2c_addr, data)
     self._pulse(data)
 
   def _pulse(self, val):
-    self.bus.write_byte(self.i2c_addr, val | 0x04)
+    #enable_on  = val | 0x04
+    #enable_off = val & ~0x04
+    enable_on  = self.bus.read_byte(self.i2c_addr) | 0x04
+    enable_off = self.bus.read_byte(self.i2c_addr) & ~0x04
+
+    print("      STROBING: " + bin(enable_on)[2:].zfill(8) + " (" + hex(enable_on) + ")")
+    print("      STROBING: " + bin(enable_off)[2:].zfill(8) + " (" + hex(enable_off) + ")")
+
+    self.bus.write_byte(self.i2c_addr, enable_on | self.backlight)
     sleep(1/1000000)
-    self.bus.write_byte(self.i2c_addr, val & 0xFB)
+    self.bus.write_byte(self.i2c_addr, val & enable_off | self.backlight)
     sleep(50/1000000)
 
   # To avoid clashing with Python's print(), we'll break API compliance
@@ -285,4 +293,4 @@ if __name__ == "__main__":
   # cls = hd44780_i2c(1, 0x3f, 20, 4, test = True)
   cls = hd44780_i2c(1, 0x3f, 20, 4)
   cls.write(ord('H'))
-#  cls.printstr('wad951')
+  cls.printstr('wad951')

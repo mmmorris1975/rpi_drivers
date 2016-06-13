@@ -130,6 +130,7 @@ class hd44780_i2c():
     self.command(self.display_control_set)
     self.set_backlight(LCD_BACKLIGHT)
     self.clear()
+#    self.home()
 
   # Mandatory functions
   def __init__(self, i2c_bus, i2c_addr, rows, cols, **kwargs):
@@ -240,6 +241,30 @@ class hd44780_i2c():
       self.home()
     else:
       self.command(LCD_CMD_SETDDRAMADDR | (col + LCD_LINE_ADDR_LIST[row]))
+
+  def get_cursor_addr(self):
+    # Docs indicate that we need to do the read when RS is low, and R/W and E are high
+    # this means it won't work via command() or any of the methods it calls.
+    nibs = []
+
+    # Set data pins for input, and set RS low, and R/W high
+    self.bus.write_byte(self.i2c_addr, 0xF0)
+    self.bus.write_byte(self.i2c_addr, 0xF0 | 0x02)
+    sleep(0.001)
+
+    for i in range(0,2):
+      self.bus.write_byte(self.i2c_addr, 0xF0 | 0x02 | 0x04)
+      nibs.append(self.bus.read_byte(self.i2c_addr))
+      self.bus.write_byte(self.i2c_addr, 0xF0 | 0x02 & ~0x04)
+
+    self.bus.write_byte(self.i2c_addr, 0x00)
+
+    high_nib = (nibs[0] >>4) <<4
+    low_nib  = nibs[1] >>4
+    return high_nib | low_nib
+
+  def get_cursor_line(self):
+    pass
 
   def cursor_on(self):
     # set block cursor on

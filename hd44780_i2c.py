@@ -196,11 +196,15 @@ class hd44780_i2c():
       self.write(ord(c))
 
   def println(self, val):
-    # Call print(), with trailing new line. 
-    # TODO: Be aware that the display attempts to print the newline instead of shifting
-    # the cursor to the next line.  That's cool, we'll just have to account for that.
-    # Line 4 wraps to Line 1?
-    self.printstr(str(val) + "\n")
+    # Call print(), then shift cursor position to next line.
+    # Lines will wrap from last configured line back to line 1
+    self.printstr(val)
+
+    cur_line = self.get_cursor_line()
+    if cur_line >= self.rows - 1:
+      self.set_cursor(0, 0)
+    else:
+      self.set_cursor(cur_line + 1, 0)
 
   def write(self, val):
     # raw write data to the display
@@ -388,5 +392,12 @@ if __name__ == "__main__":
   cls.set_cursor(-1,-1)
   sleep(1)
   cls.set_cursor(cls.rows/2, cls.cols/2)
+  sleep(1)
+
+  cls.clear()
+  for l in range(0, cls.rows + 1):
+    cls.println("LINE: " + str(l))
+    sleep(0.5)
+
   sleep(1)
   cls.off()

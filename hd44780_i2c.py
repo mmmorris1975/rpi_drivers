@@ -242,6 +242,10 @@ class hd44780_i2c():
     else:
       self.command(LCD_CMD_SETDDRAMADDR | (col + LCD_LINE_ADDR_LIST[row]))
 
+  def is_busy(self):
+    # The ddram/cursor location read also returns the busy state on the 8th bit
+    return (self.get_cursor_addr() & 0x80)
+
   def get_cursor_addr(self):
     # Docs indicate that we need to do the read when RS is low, and R/W and E are high
     # this means it won't work via command() or any of the methods it calls.
@@ -264,7 +268,16 @@ class hd44780_i2c():
     return high_nib | low_nib
 
   def get_cursor_line(self):
-    pass
+    line = 0
+    sorted_list = sorted(LCD_LINE_ADDR_LIST, reverse = True)
+    addr = self.get_cursor_addr()
+
+    for l in sorted_list:
+      if addr >= l:
+        line = LCD_LINE_ADDR_LIST.index(l)
+        break
+
+    return line
 
   def cursor_on(self):
     # set block cursor on

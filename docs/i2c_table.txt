@@ -1,0 +1,47 @@
+Assuming we didn't make any change from the initialization 8-bit input mode, these
+byte values represent the output levels from the I2C expander to the LCD inputs
+
+RS=0 & RW=0 is a command write
+RS=0 & RW=1 read busy flag and address
+RS=1 & RW=0 is a data write to CGRAM or DDRAM
+RS=1 & RW=1 is a data read to CGRAM or DDRAM
+
+
+     RS RW E  D0 D1 D2 D3 D4 D5 D6 D7
+0x00 0  0  0  1  1  1  1  0  0  0  0
+0x01 1  0  0  1  1  1  1  0  0  0  0
+0x02 0  1  0  1  1  1  1  0  0  0  0
+0x03 1  1  0  1  1  1  1  0  0  0  0
+0x04 0  0  1  1  1  1  1  0  0  0  0
+0x05 1  0  1  1  1  1  1  0  0  0  0
+0x06 0  1  1  ?  ?  ?  ?  0  0  0  0  (State of D[1-4] pins seem dependent on data previously sent)
+0x07 1  1  1  ?  ?  ?  ?  0  0  0  0  ^^^ (read operation output?)
+====================================
+0x08 0  0  0  1  1  1  1  0  0  0  0  (Backlight on, anything sent w/o this bit set turns backlight off)
+0x09 1  0  0  1  1  1  1  0  0  0  0  >
+0x0A 0  1  0  1  1  1  1  0  0  0  0  >
+0x0B 1  1  0  1  1  1  1  0  0  0  0  >
+0x0C 0  0  1  1  1  1  1  0  0  0  0  > (repeats 0x01 - 0x07 w/ backlight on)
+0x0D 1  0  1  1  1  1  1  0  0  0  0  >
+0x0E 0  1  1  ?  ?  ?  ?  0  0  0  0  >
+0x0F 1  1  1  ?  ?  ?  ?  0  0  0  0  >
+====================================
+0x10 thru 0x17                        (Repeat 0x00 - 0x07 with D4 = 1)
+0x18 thru 0x1F                        (Repeat 0x10 - 0x17 with backlight on)
+====================================
+0x20 thru 0x27                        (Repeat 0x00 - 0x07 with D5 = 1)
+0x28 thru 0x2F                        (Repeat 0x20 - 0x27 with backlight on)
+====================================
+0x3n (Repeat above sequences with D4 & D5 = 1)
+0x4n (Repeat above sequences with D6 = 1)
+0x5n (Repeat above sequences with D4 & D6 = 1)
+0x6n (Repeat above sequences with D5 & D6 = 1)
+0x7n (Repeat above sequences with D4, D5, D6 = 1)
+0x8n (Repeat above sequences with D7 = 1)
+0x9n (Repeat above sequences with D4 & D7 = 1)
+0xAn (Repeat above sequences with D5 & D7 = 1)
+0xBn (Repeat above sequences with D4, D5, D7 = 1)
+0xCn (Repeat above sequences with D6 & D7 = 1)
+0xDn (Repeat above sequences with D4, D6, D7 = 1)
+0xEn (Repeat above sequences with D5, D6, D7 = 1)
+0xFn (Repeat above sequences with D4, D5, D6, D6, D7 = 1)

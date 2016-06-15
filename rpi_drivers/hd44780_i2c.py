@@ -157,6 +157,8 @@ class hd44780_i2c():
       # initialize I2C library and display, there is no special
       # RPi setup needed, other than enabling I2C in the kernel.
       self.bus = smbus.SMBus(i2c_bus)
+    else:
+      print("UNDER TEST")
 
     self._init_display()
 

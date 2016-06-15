@@ -112,24 +112,25 @@ class hd44780_i2c():
     # Wait at least 40ms after Vcc hits 2.7V
     sleep(0.1)
 
-    # Need to raw _i2c_write(val) to set 4-bit mode before sending commands
-    self._i2c_write(0x0)
-    sleep(0.01)
-    self._i2c_write(0x30)
-    sleep(0.01)
-    self._i2c_write(0x30)
-    sleep(0.01)
-    self._i2c_write(0x30)
-    sleep(0.01)
-    self._i2c_write(0x20)
-    sleep(0.1) # for good measure
+    if not self.test:
+      # Need to raw _i2c_write(val) to set 4-bit mode before sending commands
+      self._i2c_write(0x0)
+      sleep(0.01)
+      self._i2c_write(0x30)
+      sleep(0.01)
+      self._i2c_write(0x30)
+      sleep(0.01)
+      self._i2c_write(0x30)
+      sleep(0.01)
+      self._i2c_write(0x20)
+      sleep(0.1) # for good measure
 
-    # Reset instructions complete, now initialize
-    self.command(func_set)
-    self.command(self.entry_mode_set)
-    self.command(self.display_control_set)
-    self.set_backlight(LCD_BACKLIGHT)
-    self.clear()
+      # Reset instructions complete, now initialize
+      self.command(func_set)
+      self.command(self.entry_mode_set)
+      self.command(self.display_control_set)
+      self.set_backlight(LCD_BACKLIGHT)
+      self.clear()
 
   # Mandatory functions
   def __init__(self, i2c_bus, i2c_addr, rows, cols, **kwargs):
@@ -150,7 +151,8 @@ class hd44780_i2c():
       # initialize I2C library and display, there is no special
       # RPi setup needed, other than enabling I2C in the kernel.
       self.bus = smbus.SMBus(i2c_bus)
-      self._init_display()
+
+    self._init_display()
 
   def set_delay(self, **kwargs):
     # Override the default library delays. kwargs can be one of 'cmd', or 'char'
@@ -199,21 +201,25 @@ class hd44780_i2c():
     # Lines will wrap from last configured line back to line 1
     self.printstr(val)
 
-    cur_line = self.get_cursor_line()
-    if cur_line >= self.rows - 1:
-      self.set_cursor(0, 0)
-    else:
-      self.set_cursor(cur_line + 1, 0)
+    if not self.test:
+      cur_line = self.get_cursor_line()
+      if cur_line >= self.rows - 1:
+        self.set_cursor(0, 0)
+      else:
+        self.set_cursor(cur_line + 1, 0)
 
   def write(self, val):
     # raw write data to the display
     if not self.test:
       self._write_byte(val, LCD_REG_DATA)
-      sleep(self.char_delay)
+
+    sleep(self.char_delay)
 
   def command(self, val):
     # Send command to display, for display-specific commands not covered in the API
-    self._write_byte(val, LCD_REG_CMD)
+    if not self.test:
+      self._write_byte(val, LCD_REG_CMD)
+
     sleep(self.cmd_delay) # Pause to ensure command is executed
     return bin(val)[2:].zfill(8)
 
@@ -259,17 +265,22 @@ class hd44780_i2c():
     # this means it won't work via command() or any of the methods it calls.
     nibs = []
 
-    # Set data pins for input, and set RS low, and R/W high
-    self.bus.write_byte(self.i2c_addr, 0xF0)
-    self.bus.write_byte(self.i2c_addr, 0xF0 | 0x02)
-    sleep(0.001)
+    if not self.test:
+      # Set data pins for input, and set RS low, and R/W high
+      self.bus.write_byte(self.i2c_addr, 0xF0)
+      self.bus.write_byte(self.i2c_addr, 0xF0 | 0x02)
+      sleep(0.001)
 
-    for i in range(0,2):
-      self.bus.write_byte(self.i2c_addr, 0xF0 | 0x02 | 0x04)
-      nibs.append(self.bus.read_byte(self.i2c_addr))
-      self.bus.write_byte(self.i2c_addr, 0xF0 | 0x02 & ~0x04)
+      for i in range(0,2):
+        self.bus.write_byte(self.i2c_addr, 0xF0 | 0x02 | 0x04)
+        nibs.append(self.bus.read_byte(self.i2c_addr))
+        self.bus.write_byte(self.i2c_addr, 0xF0 | 0x02 & ~0x04)
 
-    self.bus.write_byte(self.i2c_addr, 0x00)
+      self.bus.write_byte(self.i2c_addr, 0x00)
+    else:
+      # Mock value = 0xD6 (busy flag on + address = 0x56 [row 3, col 2])
+      nibs.append(0xDF)
+      nibs.append(0x6F)
 
     high_nib = (nibs[0] >>4) <<4
     low_nib  = nibs[1] >>4
@@ -316,7 +327,9 @@ class hd44780_i2c():
     else:
       self.backlight = LCD_NOBACKLIGHT
 
-    self.bus.write_byte(self.i2c_addr, self.backlight)
+    if not self.test:
+      self.bus.write_byte(self.i2c_addr, self.backlight)
+
     return self.backlight
 
   def set_contrast(self, val):
@@ -353,7 +366,7 @@ class hd44780_i2c():
 
 if __name__ == "__main__":
   # For personal reference, my display is running ROM code A00
-  cls = hd44780_i2c(1, 0x3f, 4, 20)
+  cls = hd44780_i2c(1, 0x3f, 4, 20, test=True)
 
   # lines longer than 20 chars will wrap in this order 1 -> 3 -> 2 -> 4
   # lines longer than 80 chars will circularly wrap 80 -> 1

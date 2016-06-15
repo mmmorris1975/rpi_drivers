@@ -134,6 +134,12 @@ class hd44780_i2c():
 
   # Mandatory functions
   def __init__(self, i2c_bus, i2c_addr, rows, cols, **kwargs):
+    """
+    Initialize an instance of this class. The i2c_bus, i2c_addr, rows, and cols prameters are required and are
+    hopefully self-explanatory. No special RPi setup is required other then ensuring I2C is enabled in the kernel
+    (no GPIOs need to be configured).  An optional boolean kwarg named 'test' can be provided to enable test mode
+    of this class, basically no I2C operations are performed.
+    """
     assert(i2c_bus >= 0)
     assert(i2c_addr > 0)
     assert(rows > 0)
@@ -155,12 +161,30 @@ class hd44780_i2c():
     self._init_display()
 
   def set_delay(self, **kwargs):
-    # Override the default library delays. kwargs can be one of 'cmd', or 'char'
-    # to specify setting the delay for LCD commands, or sending characters.
+    """
+    Override the default driver delays for command or data operations to the display.  Supply kwargs
+    of 'cmd' or 'char' to override the default delay values for command and data operations, respectivly.
+    Values provided are converted to microseconds.
+
+    >>> c.set_delay(cmd=1)
+    >>> c.cmd_delay
+    1e-06
+    >>> c.set_delay(char=5)
+    >>> c.char_delay
+    5e-06
+    >>> c.set_delay(char=6, cmd=7)
+    >>> c.cmd_delay
+    7e-06
+    >>> c.char_delay
+    6e-06
+    """
     self.cmd_delay  = kwargs.get('cmd', DEFAULT_CMD_DELAY) / 1000000.0
     self.char_delay = kwargs.get('char', DEFAULT_CHAR_DELAY) / 1000000.0
 
   def _write_byte(self, val, mode):
+    """
+    (API PRIVATE) Write the value of the byte to the display via the I2C bus as 2 4-bit nibbles
+    """
     #print("SENDING: " + bin(val)[2:].zfill(8) + ", MODE: " + str(mode))
     high_nib = val >> 4
     low_nib  = val & 0x0F
@@ -172,12 +196,18 @@ class hd44780_i2c():
     self._i2c_write((low_nib << 4) | mode)
 
   def _i2c_write(self, val):
+    """
+    (API PRIVATE) Perform the necessary signalling to send the data via I2C
+    """
     data = val | self.backlight
     #print("    SENDING BYTE: " + bin(data)[2:].zfill(8) + " (" + hex(data) + ")")
     self.bus.write_byte(self.i2c_addr, data)
     self._pulse()
 
   def _pulse(self):
+    """
+    (API PRIVATE) Pulse the E (enable) line on the display so it will accept the data we've sent it
+    """    
     # We are curiously losing the backlight bit when doing the read back
     enable_on  = self.bus.read_byte(self.i2c_addr) | 0x04 | self.backlight
     enable_off = self.bus.read_byte(self.i2c_addr) & ~0x04 | self.backlight
@@ -191,14 +221,19 @@ class hd44780_i2c():
 
   # To avoid clashing with Python's print(), we'll need to break API compliance
   def printstr(self, val):
-    # print the provided value on the display
+    """
+    Write the given string to the display.  Each character (c) in the string will be sent to the
+    display as 'ord(c)', so it will not correctly handle raw bytes, use write() for that.
+    """
     for c in val[:]:
       #print("WRITTING: " + c)
       self.write(ord(c))
 
   def println(self, val):
-    # Call print(), then shift cursor position to next line.
-    # Lines will wrap from last configured line back to line 1
+    """
+    Call print() and then shift the cursor to the next line, first column.
+    If cursor is on the last line, it will be shifted back to line 1, first column.
+    """
     self.printstr(val)
 
     if not self.test:
@@ -209,14 +244,24 @@ class hd44780_i2c():
         self.set_cursor(cur_line + 1, 0)
 
   def write(self, val):
-    # raw write data to the display
+    """
+    Write a raw byte to the display.  This is what print() delegates to, and would be useful
+    for printing non-printing characters or other glyphs.
+    """
     if not self.test:
       self._write_byte(val, LCD_REG_DATA)
 
     sleep(self.char_delay)
 
   def command(self, val):
-    # Send command to display, for display-specific commands not covered in the API
+    """
+    Send a command byte to the display, for display-specific commands that don't
+    have methods available in this library.  Returns the bit-string of the command
+    sent in order to make the operation testable.
+
+    >>> c.command(0xD5)
+    '11010101'
+    """
     if not self.test:
       self._write_byte(val, LCD_REG_CMD)
 
@@ -224,14 +269,43 @@ class hd44780_i2c():
     return bin(val)[2:].zfill(8)
 
   def clear(self):
-    # clear display and return cursor to 0,0
+    """
+    Clear the display and return cursor to position 0,0
+
+    >>> c.clear()
+    '00000001'
+    """
     return self.command(LCD_CMD_CLEARDISPLAY)
 
   def home(self):
+    """
+    Return cursor to 0,0 position, but leave displayed data untouched
+
+    >>> c.home()
+    '00000010'
+    """
     # set cursor position to 0,0 leaving display untouched
     return self.command(LCD_CMD_CURSORHOME)
 
   def set_cursor(self, row, col):
+    """
+    Move cursor to indicated, absolute position (zero based), row and col values falling outside the
+    configured display size will be set to 0 or the max rows/cols configured via the constructor.
+    Returns the address of the cursor position.
+
+    >>> c.set_cursor(0,5)
+    5
+    >>> c.set_cursor(1,12)
+    76
+    >>> c.set_cursor(2,0)
+    20
+    >>> c.set_cursor(3,20)
+    103
+    >>> c.set_cursor(-1,5)
+    5
+    >>> c.set_cursor(0,1000)
+    19
+    """
     # move cursor to indicated position (absolute, zero based), row and col values falling outside the
     # configured display size will be set to 0 or max rows/colums value provided in the constructor
     addr = LCD_LINE_ADDR_LIST[0] # 0,0
@@ -257,10 +331,23 @@ class hd44780_i2c():
     return addr
 
   def is_busy(self):
+    """
+    Read the busy flag which is returnd as the 8th bit on the data returned from get_cursor_addr().
+    Returns non-zero value if true.
+
+    >>> c.get_cursor_addr()
+    214
+    """
     # The ddram/cursor location read also returns the busy state on the 8th bit
     return (self.get_cursor_addr() & 0x80)
 
   def get_cursor_addr(self):
+    """
+    Get the address of the cursor position.
+
+    >>> c.get_cursor_addr()
+    214
+    """
     # Docs indicate that we need to do the read when RS is low, and R/W and E are high
     # this means it won't work via command() or any of the methods it calls.
     nibs = []
@@ -287,6 +374,13 @@ class hd44780_i2c():
     return high_nib | low_nib
 
   def get_cursor_line(self):
+    """
+    Get the line number for the current cursor position by translating the cursor address returned from get_cursor_addr()
+    to a line number.  Value returned will be a zero-based value.
+
+    >>> c.get_cursor_line()
+    3
+    """
     line = 0
     sorted_list = sorted(LCD_LINE_ADDR_LIST, reverse = True)
     addr = self.get_cursor_addr()
@@ -299,27 +393,62 @@ class hd44780_i2c():
     return line
 
   def cursor_on(self):
-    # set block cursor on
+    """
+    Turns the underline cursor on.
+
+    >>> c.cursor_on()
+    '00001111'
+    """
     self.display_control_set |= LCD_CURSORON
     return self.command(self.display_control_set)
 
   def cursor_off(self):
-    # set block cursor off
+    """
+    Turn the underline cursor off
+
+    >>> c.cursor_off()
+    '00001101'
+    """
     self.display_control_set &= ~LCD_CURSORON
     return self.command(self.display_control_set)
 
   def blink_on(self):
-    # set blinking underline cursor on
+    """
+    Turn on the blinking block cursor.
+
+    >>> c.blink_on()
+    '00001111'
+    """
     self.display_control_set |= LCD_BLINKON
     return self.command(self.display_control_set)
 
   def blink_off(self):
-    # set blinking underline cursor off
+    """
+    Turn off the blinking block cursor.
+
+    >>> c.blink_off()
+    '00001110'
+    """
     self.display_control_set &= ~LCD_BLINKON
     return self.command(self.display_control_set)
 
   # Optional functions
   def set_backlight(self, val):
+    """
+    Set backlight intensity. Currently only supports either full on or full off intensity.
+    Values supplied to this method larger than 1 will be interpreted as backlight on, and
+    a values less than 1 will be interpreted as backlight off. Value returned is the value
+    of the backlight attribute for the instance of the object.
+
+    >>> c.set_backlight(1)
+    8
+    >>> c.set_backlight(0)
+    0
+    >>> c.set_backlight(255)
+    8
+    >>> c.set_backlight(-4)
+    0
+    """
     # TODO: set backlight brightness (0-255), where 0 = off
     # Best I can tell, backlight control is either on or off
     if val > 0:
@@ -333,18 +462,33 @@ class hd44780_i2c():
     return self.backlight
 
   def set_contrast(self, val):
+    """
+    Set display contrast. Currently a no-op as the display I have doesn't support this
+    """
     # TODO: set display contrast (0-255)
-    # display I use doesn't support this, so provide a no-op for now
     pass
 
   def on(self):
+    """
+    Turn the display on.  This implementation will send the 'display on' command to the
+    device, as well as turning on the backlight.
+
+    >>> c.on()
+    '00001111'
+    """
     # turn display on and set backlight to ~ 75%
     self.set_backlight(192)
     self.display_control_set |= LCD_DISPLAYON
     return self.command(self.display_control_set)
 
   def off(self):
-    # set backlight to 0 and turn display off
+    """
+    Turn the display off. This implementation will send the 'display off' command to the
+    display, and turn off the backlight.
+
+    >>> c.off()
+    '00001011'
+    """
     self.set_backlight(0)
     self.display_control_set &= ~LCD_DISPLAYON
     return self.command(self.display_control_set)
@@ -366,55 +510,5 @@ class hd44780_i2c():
 
 if __name__ == "__main__":
   # For personal reference, my display is running ROM code A00
-  cls = hd44780_i2c(1, 0x3f, 4, 20, test=True)
-
-  # lines longer than 20 chars will wrap in this order 1 -> 3 -> 2 -> 4
-  # lines longer than 80 chars will circularly wrap 80 -> 1
-  cls.printstr('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz9876543210')
-  sleep(2)
-  print("CURSOR OFF")
-  cls.cursor_off()
-  sleep(1)
-  print("CURSOR ON")
-  cls.cursor_on()
-  sleep(1)
-  print("BLINK ON")
-  cls.blink_on()
-  sleep(1)
-  print("BLINK OFF")
-  cls.blink_off()
-  sleep(1)
-  print("HOME")
-  cls.home()
-  sleep(1)
-  print("CLEAR")
-  cls.clear()
-  sleep(1)
-  print("OFF")
-  cls.off()
-  sleep(1)
-  print("ON")
-  cls.on()
-  sleep(1)
-  cls.printstr('Hello World')
-
-  for r in range(cls.rows, -1, -1):
-    cls.set_cursor(r, 0)
-    sleep(1)
-
-  cls.set_cursor(cls.rows, cls.cols)
-  sleep(1)
-  cls.set_cursor(1,1)
-  sleep(1)
-  cls.set_cursor(-1,-1)
-  sleep(1)
-  cls.set_cursor(cls.rows/2, cls.cols/2)
-  sleep(1)
-
-  cls.clear()
-  for l in range(0, cls.rows + 1):
-    cls.println("LINE: " + str(l))
-    sleep(0.5)
-
-  sleep(1)
-  cls.off()
+  import doctest
+  doctest.testmod(extraglobs={'c': hd44780_i2c(1, 1, 4, 20, test = 1)})

@@ -130,7 +130,6 @@ class hd44780_i2c():
     self.command(self.display_control_set)
     self.set_backlight(LCD_BACKLIGHT)
     self.clear()
-#    self.home()
 
   # Mandatory functions
   def __init__(self, i2c_bus, i2c_addr, rows, cols, **kwargs):
@@ -229,6 +228,8 @@ class hd44780_i2c():
   def set_cursor(self, row, col):
     # move cursor to indicated position (absolute, zero based), row and col values falling outside the
     # configured display size will be set to 0 or max rows/colums value provided in the constructor
+    addr = LCD_LINE_ADDR_LIST[0] # 0,0
+
     if row < 0:
       row = 0
 
@@ -244,7 +245,10 @@ class hd44780_i2c():
     if row == 0 and col == 0:
       self.home()
     else:
-      self.command(LCD_CMD_SETDDRAMADDR | (col + LCD_LINE_ADDR_LIST[row]))
+      addr = col + LCD_LINE_ADDR_LIST[row]
+      self.command(LCD_CMD_SETDDRAMADDR | addr)
+
+    return addr
 
   def is_busy(self):
     # The ddram/cursor location read also returns the busy state on the 8th bit
@@ -313,7 +317,7 @@ class hd44780_i2c():
       self.backlight = LCD_NOBACKLIGHT
 
     self.bus.write_byte(self.i2c_addr, self.backlight)
-    self.backlight
+    return self.backlight
 
   def set_contrast(self, val):
     # TODO: set display contrast (0-255)
@@ -322,9 +326,9 @@ class hd44780_i2c():
 
   def on(self):
     # turn display on and set backlight to ~ 75%
+    self.set_backlight(192)
     self.display_control_set |= LCD_DISPLAYON
-    self.command(self.display_control_set)
-    return self.set_backlight(192)
+    return self.command(self.display_control_set)
 
   def off(self):
     # set backlight to 0 and turn display off
